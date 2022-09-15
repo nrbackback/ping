@@ -48,12 +48,13 @@ func main() {
 	}
 	flag.Parse()
 
-	if flag.NArg() == 0 {
-		flag.Usage()
-		return
-	}
+	// if flag.NArg() == 0 {
+	// 	flag.Usage()
+	// 	return
+	// }
 
 	host := flag.Arg(0)
+	host = "127.0.0.1"
 	pinger, err := ping.NewPinger(host)
 	if err != nil {
 		fmt.Println("ERROR:", err)

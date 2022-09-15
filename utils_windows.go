@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package ping
+package main
 
 import (
 	"golang.org/x/net/ipv4"

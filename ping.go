@@ -1,4 +1,4 @@
-// Package ping is a simple but powerful ICMP echo (ping) library.
+// Package main is a simple but powerful ICMP echo (ping) library.
 //
 // Here is a very simple example that sends and receives three packets:
 //
@@ -50,7 +50,7 @@
 //
 // For a full ping example, see "cmd/ping/ping.go".
 //
-package ping
+package main
 
 import (
 	"bytes"
@@ -92,7 +92,6 @@ func New(addr string) *Pinger {
 	firstSequence[firstUUID] = make(map[int]struct{})
 	return &Pinger{
 		Count:      -1,
-		Interval:   time.Second,
 		RecordRtts: true,
 		Size:       timeSliceLength + trackerLength,
 		Timeout:    time.Duration(math.MaxInt64),
@@ -114,13 +113,14 @@ func New(addr string) *Pinger {
 // NewPinger returns a new Pinger and resolves the address.
 func NewPinger(addr string) (*Pinger, error) {
 	p := New(addr)
+	p.revcPing = make(chan bool)
 	return p, p.Resolve()
 }
 
 // Pinger represents a packet sender/receiver.
 type Pinger struct {
 	// Interval is the wait time between each packet send. Default is 1s.
-	Interval time.Duration
+	revcPing chan bool
 
 	// Timeout specifies a timeout before ping exits, regardless of how many
 	// packets have been received.
@@ -273,6 +273,10 @@ type Statistics struct {
 	// StdDevRtt is the standard deviation of the round-trip times sent via
 	// this pinger.
 	StdDevRtt time.Duration
+}
+
+func (p *Pinger) SendPingSignal() {
+	p.revcPing <- true
 }
 
 func (p *Pinger) updateStatistics(pkt *Packet) {
@@ -460,15 +464,15 @@ func (p *Pinger) runLoop(
 	}
 
 	timeout := time.NewTicker(p.Timeout)
-	interval := time.NewTicker(p.Interval)
+	// interval := time.NewTicker(p.Interval)
 	defer func() {
-		interval.Stop()
+		// interval.Stop()
 		timeout.Stop()
 	}()
 
-	if err := p.sendICMP(conn); err != nil {
-		return err
-	}
+	// if err := p.sendICMP(conn); err != nil {
+	// 	return err
+	// }
 
 	for {
 		select {
@@ -485,20 +489,23 @@ func (p *Pinger) runLoop(
 				logger.Fatalf("processing received packet: %s", err)
 			}
 
-		case <-interval.C:
-			if p.Count > 0 && p.PacketsSent >= p.Count {
-				interval.Stop()
-				continue
+		case v := <-p.revcPing:
+			if v {
+				err := p.sendICMP(conn)
+				if err != nil {
+					// FIXME: this logs as FATAL but continues
+					logger.Fatalf("sending packet: %s", err)
+				}
 			}
-			err := p.sendICMP(conn)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("sending packet: %s", err)
+			if p.Count > 0 && p.PacketsRecv >= p.Count {
+				return nil
 			}
 		}
-		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			return nil
-		}
+		// if p.Count > 0 && p.PacketsSent >= p.Count {
+		// 	interval.Stop()
+		// 	continue
+		// }
+
 	}
 }
 
@@ -515,6 +522,7 @@ func (p *Pinger) Stop() {
 	if open {
 		close(p.done)
 	}
+	// close(p.revcPing)
 }
 
 func (p *Pinger) finish() {
